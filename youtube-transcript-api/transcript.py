@@ -26,28 +26,60 @@ class YouTubeTranscriptSearcher:
 
     @staticmethod
     def find_phrase_occurrences(transcript: List[Dict], search_phrase: str, duration: int = None) -> List[Tuple[float, str]]:
-        """
-        Find all occurrences of a phrase in the transcript.
-        
-        Args:
-            transcript: Video transcript
-            search_phrase: Phrase to search for
-            duration: Duration in seconds to include in the URLs (optional)
-        """
-        occurrences = []
-        search_phrase = search_phrase.lower()
-        
-        for entry in transcript:
-            current_text = entry['text'].lower()
-            cleaned_text = re.sub(r'[^\w\s]', '', current_text)
-            
-            if search_phrase in cleaned_text or search_phrase in current_text:
-                timestamp = entry['start']
-                end_time = timestamp + duration if duration else None
-                context = entry['text']
-                occurrences.append((timestamp, end_time, context))
-                
-        return occurrences
+      """
+      Find all occurrences of a phrase in the transcript using a sliding window of 3 elements.
+      Both search phrase and transcript text are cleaned consistently.
+      
+      Args:
+          transcript: Video transcript
+          search_phrase: Phrase to search for
+          duration: Duration in seconds to include in the URLs (optional)
+      """
+      occurrences = []
+      
+      # Helper function to clean text - removes punctuation and converts to lowercase
+      def clean_text(text):
+          return re.sub(r'[^\w\s]', '', text.lower())
+          
+      # Clean the search phrase once
+      cleaned_search_phrase = clean_text(search_phrase)
+      
+      for i in range(len(transcript)):
+          # Get previous, current, and next elements
+          prev_text = transcript[i-1]['text'] if i > 0 else ""
+          current_text = transcript[i]['text']
+          next_text = transcript[i+1]['text'] if i < len(transcript)-1 else ""
+          
+          # Create different combinations of text windows
+          windows = [
+              current_text,  # Single element
+              f"{prev_text} {current_text}",  # Previous + current
+              f"{current_text} {next_text}",  # Current + next
+              f"{prev_text} {current_text} {next_text}"  # All three
+          ]
+          
+          # Search in each window
+          for window in windows:
+              cleaned_window = clean_text(window)
+              
+              if cleaned_search_phrase in cleaned_window:
+                  timestamp = transcript[i]['start']
+                  
+                  # Calculate end_time based on which window matched
+                  if duration:
+                      end_time = timestamp + duration
+                  else:
+                      # If we matched with next element, include its duration
+                      if window == windows[2] or window == windows[3]:
+                          next_duration = transcript[i+1].get('duration', 0)
+                          end_time = timestamp + transcript[i].get('duration', 0) + next_duration
+                      else:
+                          end_time = timestamp + transcript[i].get('duration', 0)
+                  
+                  occurrences.append((timestamp, end_time, window))
+                  break  # Found in one of the windows, move to next position
+                  
+      return occurrences
 
     @staticmethod
     def format_time(seconds: float) -> str:
