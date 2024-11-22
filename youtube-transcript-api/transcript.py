@@ -37,9 +37,33 @@ class YouTubeTranscriptSearcher:
         )
 
     @staticmethod
+    def estimate_word_duration(word: str) -> float:
+        """
+        Estimate relative duration of a word based on its characteristics.
+        Returns a weight factor where 1.0 is the baseline.
+        """
+        # Count consonants (rough proxy for complexity)
+        consonants = sum(1 for c in word.lower() if c not in 'aeiou ')
+        
+        # Count total characters
+        char_count = len(word)
+        
+        # Words shorter than 3 chars are likely to be spoken quickly
+        if char_count <= 2:
+            base_weight = 0.7
+        else:
+            # Longer words get progressively more weight
+            base_weight = 1.0 + (char_count - 3) * 0.1
+        
+        # Add weight for consonant clusters which typically slow speech
+        consonant_weight = 1.0 + (consonants / char_count - 0.5) * 0.2
+        
+        return base_weight * consonant_weight
+
+    @staticmethod
     def create_word_mapping(transcript: List[Dict]) -> Tuple[List[str], List[Dict]]:
         """
-        Create word mapping with both entry timing and calculated word timing.
+        Create word mapping with timing based on word characteristics.
         """
         words = []
         word_mappings = []
@@ -49,26 +73,36 @@ class YouTubeTranscriptSearcher:
             if not entry_words:
                 continue
                 
+            # Calculate weights for each word
+            word_weights = [YouTubeTranscriptSearcher.estimate_word_duration(word) 
+                          for word in entry_words]
+            total_weight = sum(word_weights)
+            
             # Calculate timing for each word in the entry
             entry_duration = entry.get('duration', 0)
-            word_duration = entry_duration / len(entry_words)
             entry_start = entry['start']
-            for i, word in enumerate(entry_words):
-                # Calculate word-specific timing
-                word_start = entry_start + (i * word_duration)
+            current_time = entry_start
+            
+            for i, (word, weight) in enumerate(zip(entry_words, word_weights)):
+                # Calculate word duration based on its weight relative to total
+                word_duration = (weight / total_weight) * entry_duration
                 
-                # Store both timings
                 word_mapping = {
                     'word': word,
-                    'entry_start': entry_start,        # Original entry start
-                    'word_start': word_start,          # Calculated word start
+                    'entry_start': entry_start,
+                    'word_start': current_time,
                     'duration': word_duration,
-                    'total_words': len(entry_words),   # Words in this entry
-                    'position': i                      # Position in entry
+                    'total_words': len(entry_words),
+                    'position': i,
+                    'weight': weight  # Store weight for debugging/tuning
                 }
                 
                 words.append(word)
                 word_mappings.append(word_mapping)
+                
+                # Update time for next word
+                current_time += word_duration
+        
         return words, word_mappings
 
     @staticmethod
@@ -145,45 +179,103 @@ class YouTubeTranscriptSearcher:
         secs = int(seconds % 60)
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
-def main():
-    parser = argparse.ArgumentParser(description='Search YouTube video transcripts for similar phrases')
+def setup_parser() -> argparse.ArgumentParser:
+    """Set up and return the argument parser."""
+    parser = argparse.ArgumentParser(
+        description='Search YouTube video transcripts for similar phrases',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('url', help='YouTube video URL')
     parser.add_argument('phrase', help='Phrase to search for')
-    parser.add_argument('--threshold', type=int, default=80,
-                       help='Minimum similarity threshold (0-100)')
-    parser.add_argument('--duration', type=int,
-                       help='Duration in seconds to include from the timestamp')
-    args = parser.parse_args()
+    parser.add_argument(
+        '--threshold', 
+        type=int, 
+        default=80,
+        help='Minimum similarity threshold (0-100)'
+    )
+    parser.add_argument(
+        '--duration', 
+        type=int,
+        help='Duration in seconds to include from the timestamp'
+    )
+    return parser
 
+def format_search_results(video_id: str, phrase: str, occurrences: List[Tuple]) -> None:
+    """Format and print search results."""
+    if not occurrences:
+        print(f"\nNo similar phrases found for '{phrase}'")
+        return
+
+    print(f"\nFound similar phrases to '{phrase}':")
+    
+    for timestamp, end_time, text, similarity in occurrences:
+        formatted_time = YouTubeTranscriptSearcher.format_time(timestamp)
+        base_timestamp = int(timestamp)
+        
+        # Print match details
+        print(f"\nTime: {formatted_time}")
+        print(f"Match score: {similarity:.1f}%")
+        print(f"Text: \"{text}\"")
+        
+        # Print timestamped URLs
+        print("\nPrimary URL:")
+        print(f"https://youtube.com/watch?v={video_id}&t={base_timestamp}s")
+        
+        print("\nAlternative timestamps (if the exact moment is slightly off):")
+        print(f"Earlier: https://youtube.com/watch?v={video_id}&t={base_timestamp - 1}s")
+        print(f"Later:   https://youtube.com/watch?v={video_id}&t={base_timestamp + 1}s")
+
+def process_video(url: str, phrase: str, threshold: int, duration: int) -> None:
+    """Process video transcript and search for phrases."""
     try:
-        video_id = YouTubeTranscriptSearcher.get_video_id(args.url)
+        # Extract video ID
+        video_id = YouTubeTranscriptSearcher.get_video_id(url)
         if not video_id:
-            print("Error: Could not extract video ID from URL")
-            sys.exit(1)
+            raise ValueError("Could not extract video ID from URL")
+        
+        # Get transcript and search for phrases
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        except Exception as e:
+            raise ValueError(f"Could not fetch transcript: {str(e)}")
             
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
         occurrences = YouTubeTranscriptSearcher.find_phrase_occurrences(
-            transcript, 
-            args.phrase,
-            similarity_threshold=args.threshold,
+            transcript=transcript,
+            search_phrase=phrase,
+            similarity_threshold=threshold,
+            duration=duration
+        )
+        
+        # Format and display results
+        format_search_results(video_id, phrase, occurrences)
+        
+    except ValueError as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        sys.exit(1)
+
+def main():
+    """Main entry point for the script."""
+    try:
+        # Set up and parse arguments
+        parser = setup_parser()
+        args = parser.parse_args()
+        
+        # Process video and display results
+        process_video(
+            url=args.url,
+            phrase=args.phrase,
+            threshold=args.threshold,
             duration=args.duration
         )
         
-        if not occurrences:
-            print(f"No similar phrases found for '{args.phrase}'")
-            return
-
-        print(f"\nFound similar phrases to '{args.phrase}':")
-        for timestamp, end_time, text, similarity in occurrences:
-            formatted_time = YouTubeTranscriptSearcher.format_time(timestamp)
-            
-            print(f"\nTime: {formatted_time}")
-            print(f"Match score: {similarity}%")
-            print(f"Text: \"{text}\"")
-            print(f"URL: https://youtube.com/watch?v={video_id}&t={int(timestamp)}s")
-                
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Critical error: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
