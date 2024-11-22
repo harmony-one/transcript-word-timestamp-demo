@@ -17,24 +17,6 @@ import os
 
 aai.settings.api_key = app_config.config.ASSEMBLYAI_AUTH_KEY
 
-ydl_opts = {
-    'format': 'm4a/bestaudio/best',  # The best audio version in m4a format
-    'outtmpl': '%(id)s.%(ext)s',  # The output name should be the id followed by the extension
-    'postprocessors': [{  # Extract audio using ffmpeg
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'm4a',
-    }]
-}
-
-URLS = ['https://www.youtube.com/watch?v=mr0szqsSAaE']
-
-def create_quiet_logger():
-    class QuietLogger:
-        def debug(self, msg): pass
-        def warning(self, msg): pass
-        def error(self, msg): print(f"Error: {msg}")
-    return QuietLogger()
-
 class YouTubeHandler:
     @staticmethod
     def get_video_id(url: str) -> str:
@@ -280,7 +262,7 @@ def process_video(url: str, search_phrase: str,
         # Transcribe and search
         print(f"Transcribing audio... {audio_path}")
         transcriber = aai.Transcriber()
-        transcript = aai.Transcript.get_by_id('b329f1b0-5188-4033-b827-6b0b0cc23152') # transcriber.transcribe(audio_path)
+        transcript = transcriber.transcribe(audio_path) # aai.Transcript.get_by_id('b329f1b0-5188-4033-b827-6b0b0cc23152') # transcriber.transcribe(audio_path)
         searcher = AssemblyAITranscriptSearcher()
         occurrences = searcher.find_phrase_occurrences(
             transcript=transcript,
