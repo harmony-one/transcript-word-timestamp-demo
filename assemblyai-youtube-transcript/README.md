@@ -2,8 +2,8 @@
 A Python tool that combines AssemblyAI transcription with semantic search to find and extract specific moments from YouTube videos.
 
 ## Prerequisites
-- Python 3.7 or higher
-- AssemblyAI API key (set in config.py)
+- Python 3.10 or higher
+- AssemblyAI API key (set in .env file)
 - FFmpeg (required for audio/video processing)
 
 ## Installation
@@ -47,33 +47,37 @@ ASSEMBLYAI_AUTH_KEY=your-api-key-here
 
 ### Basic Command
 ```bash
-python transcript.py <youtube_url> "<search_phrase>" [options]
+python cli.py <youtube_url> (-p PHRASE | -t TEXT) [options]
 ```
 
 ### Parameters
 | Parameter | Description | Required | Default |
 |-----------|-------------|----------|---------|
 | youtube_url | Full URL of the YouTube video | Yes | - |
-| search_phrase | Text to search for (max 5 words) | Yes | - |
+| -p, --phrase | Short phrase to search for (max 5 words) | No* | -
+| -t, --textFull | text to search for (split into segments) | No* | -
 | --threshold | Minimum similarity threshold (0-100) | No | 80 |
 | --clip-duration | Duration of extracted clips in seconds (0 to disable) | No | 30 |
 | --no-cleanup | Keep temporary files after processing | No | False |
+| --subtitles | Subtitle mode: word-by-word, full text, or none | No | word |
+
+* Either --phrase or --text must be specified, but not both
 
 ### Examples
 
-Search for a phrase and create a 30-second clip:
+Search for a specific phrase:
 ```bash
-python transcript.py "https://www.youtube.com/watch?v=example" "interesting phrase" --clip-duration 30
+python transcript.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30
 ```
 
-Search with higher similarity threshold:
+Search for a longer text segment:
 ```bash
-python transcript.py "https://www.youtube.com/watch?v=example" "exact phrase" --threshold 90
+python transcript.py "https://youtube.com/watch?v=example" -t "this is a longer text that will be split into start and end segments" --threshold 90
 ```
 
-Keep temporary files:
+Search without generating subtitles:
 ```bash
-python transcript.py "https://www.youtube.com/watch?v=example" "test phrase" --no-cleanup
+python transcript.py "https://youtube.com/watch?v=example" -p "test phrase" --subtitles none
 ```
 
 ## Output
@@ -85,10 +89,9 @@ The tool will:
    - Match score
    - Matched text
    - Direct YouTube URL with timestamp
-4. Optionally create video clips of matches
+4. Optionally create video clips with word-by-word subtitles
 
 ## Notes
 - Search phrases are limited to 5 words for optimal matching
-- Clips are extracted in MP4 format
-- The tool uses fuzzy matching to find similar phrases, not just exact matches
+- Long text inputs are automatically split into start and end segments
 - Temporary files are automatically cleaned up unless --no-cleanup is specified
