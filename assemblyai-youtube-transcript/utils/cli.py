@@ -13,13 +13,12 @@ def parse_arguments():
     
     # Common arguments
     parser.add_argument('--threshold', type=int, default=80,
-                       help='Minimum similarity threshold (0-100)')
+                        help='Minimum similarity threshold (0-100)')
     parser.add_argument('--clip-duration', type=int, default=30,
-                       help='Duration of extracted clips in seconds (0 to disable)')
+                        help='Duration of extracted clips in seconds (0 to disable)')
     parser.add_argument('--no-cleanup', action='store_true',
-                       help='Do not delete temporary files')
-    parser.add_argument('--subtitles', choices=['word', 'full', 'none'],
-                       default='word',
-                       help='Subtitle mode: word-by-word (default), full text, or none')
+                        help='Do not delete temporary files')
+    parser.add_argument('-w', '--words', type=int, default=1,
+                        help='Words per subtitle print'),
     
     return parser.parse_args()

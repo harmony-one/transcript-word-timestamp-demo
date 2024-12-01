@@ -1,13 +1,35 @@
-import subprocess
+import traceback
 from urllib.parse import parse_qs, urlparse
-from typing import List, Optional
+from typing import List
 from yt_dlp.utils import download_range_func
-from subprocess import DEVNULL
-from typing import Optional
 from config import config as app_config
-
+from enum import Enum
 import yt_dlp
 import os
+from moviepy import VideoFileClip, TextClip, CompositeVideoClip
+
+class SubtitleConfig:
+    """Configuration class for subtitle styling"""
+    ACTIVE_COLOR = 'purple'     # Color for the currently spoken word
+    INACTIVE_COLOR = 'gray'     # Color for other visible words
+    DEFAULT_WINDOW_SIZE = 5     # Number of words visible at once
+    FONT_SIZE = 48             # Base font size
+    FONT_PATH = os.path.join('assets', 'Anton', 'Anton-Regular.ttf')
+    DEFAULT_SIMILARITY_THRESHOLD = 80
+    
+    
+class SubtitleMode(Enum):
+    WORD = "word"
+    PHRASE = "phrase"
+    NONE = "none"
+
+def escape_text(text) -> str:
+    """Helper function to properly escape text for FFmpeg."""
+    text = text.replace("'", "\u2019")  # Use Unicode right single quotation mark
+    text = text.replace('"', '\\"')
+    text = text.replace(',', '\\,')
+    text = text.replace(':', '\\:')
+    return text
 
 class YouTubeHandler:
     @staticmethod
@@ -54,64 +76,79 @@ class YouTubeHandler:
         except Exception as e:
             raise Exception(f"Failed to download audio: {str(e)}")
 
-    @staticmethod
-    def add_word_subtitles_to_clip(input_file: str, output_file: str, 
-                            words: List[dict],
-                            duration: int,
-                            font_size: int = 48) -> bool:
-        """
-        Add word subtitles to video clip using a single FFmpeg command.
-        """
+    def process_video_with_highlights(input_file: str, output_file: str, 
+                            words: List[dict], duration: float,
+                            window_size: int = SubtitleConfig.DEFAULT_WINDOW_SIZE,
+                            font_size: int = SubtitleConfig.FONT_SIZE) -> bool:
         try:
-            filter_complex = []
+            video = VideoFileClip(input_file)
+            clips = []
             clip_start_ms = words[0]['start']
+            char_width = font_size * 0.45  # Reduced for tighter character spacing
+            word_spacing = font_size * 0.36  # Reduced for closer word spacing
 
-            if not os.path.exists(app_config.FONT_PATH):
-                raise Exception(f"Font file not found at: {app_config.FONT_PATH}")
-            
-            # Process all words in a single command
-            for word in words:
-                word_start = (word['start'] - clip_start_ms) / 1000
-                word_end = (word['end'] - clip_start_ms) / 1000
-                
-                if word_start < duration and word_end > 0:
-                    word_start = max(0, word_start)
-                    word_end = min(duration, word_end)
-                    escaped_word = word['text'].upper().replace("'", "'\\''").replace('"', '\\"')
-                    
-                    filter_complex.append(
-                        f"drawtext=text='{escaped_word}':"
-                        f"fontsize={font_size}:"
-                        f"fontfile='{app_config.FONT_PATH}':"
-                        f"fontcolor=lime@1.0:"
-                        f"borderw=3:"
-                        f"bordercolor=black@1.0:"
-                        f"x=(w-text_w)/2:"
-                        f"y=h-h/4:"
-                        f"enable='between(t,{word_start},{word_end})'"
+            for i in range(0, len(words), window_size):
+                window_words = words[i:i + window_size]
+                if not window_words:
+                    continue
+
+                window_start = (window_words[0]['start'] - clip_start_ms) / 1000
+                window_end = (window_words[-1]['end'] - clip_start_ms) / 1000
+
+                # Calculate total width with adjusted spacing
+                total_width = sum(len(w['text']) for w in window_words) * char_width + \
+                            (len(window_words) - 1) * word_spacing
+                start_x = (video.w - total_width) / 2
+                current_x = start_x
+
+                for word_idx, word in enumerate(window_words):
+                    word_start = (word['start'] - clip_start_ms) / 1000
+                    word_end = (word['end'] - clip_start_ms) / 1000
+                    word_width = len(word['text']) * char_width
+
+                    # Background word
+                    text_clip = (TextClip(
+                        text=word['text'].upper(),
+                        size=(int(word_width * 1.1), None),  # Slightly wider than text
+                        font_size=font_size,
+                        color='white',
+                        stroke_color='black',
+                        stroke_width=2,
+                        font=SubtitleConfig.FONT_PATH,
+                        method='label'
                     )
-            
-            # Single FFmpeg command with all filters
-            filter_string = ','.join(filter_complex)
-            cmd = [
-                'ffmpeg',
-                '-i', input_file,
-                '-vf', filter_string,
-                '-c:a', 'copy',
-                '-y',
-                output_file
-            ]
-            
-            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            if result.returncode == 0 and os.path.exists(output_file):
-                print("Word subtitles added successfully")
-                return True
-            else:
-                raise Exception("Failed to create subtitled video")
-                
+                    .with_duration(window_end - window_start)
+                    .with_start(window_start)
+                    .with_position((int(current_x), video.h - font_size * 2)))
+                    clips.append(text_clip)
+
+                    # Highlighted version
+                    highlight = (TextClip(
+                        text=word['text'].upper(),
+                        size=(int(word_width * 1.1), None),
+                        font_size=font_size,
+                        color='yellow',
+                        stroke_color='black',
+                        stroke_width=2,
+                        font=SubtitleConfig.FONT_PATH,
+                        method='label'
+                    )
+                    .with_duration(word_end - word_start)
+                    .with_start(word_start)
+                    .with_position((int(current_x), video.h - font_size * 2)))
+                    clips.append(highlight)
+
+                    current_x += word_width + word_spacing
+
+            final_video = CompositeVideoClip([video] + clips)
+            final_video.write_videofile(output_file, codec='libx264', audio_codec='aac')
+            video.close()
+            final_video.close()
+            return True
+
         except Exception as e:
-            print(f"Error adding word subtitles: {str(e)}")
+            print(f"Error processing video: {str(e)}")
+            traceback.print_exc()
             return False
     
     @staticmethod
@@ -120,28 +157,22 @@ class YouTubeHandler:
         start_time: float,
         duration: int = 30, 
         output_dir: str = app_config.DEFAULT_OUTPUT_DIR,
-        subtitle_text: Optional[str] = None, 
-        word_by_word: bool = False,
+        window_size: int = 5,
         words: List[dict] = []
     ) -> str:
         """
         Extract video clip, optimized for short segments.
         """
         os.makedirs(output_dir, exist_ok=True)
-        
+
         video_id = YouTubeHandler.get_video_id(url)
         base_output = f"{video_id}_clip_{int(start_time)}.mp4"
         base_output_path = os.path.join(output_dir, base_output)
 
-        # If subtitles are requested, prepare subtitle output path
-        if subtitle_text:
-            subtitle_type = "word" if word_by_word else "full"
-            final_output_path = os.path.join(
-                output_dir, 
-                f"{video_id}_clip_{int(start_time)}_{subtitle_type}_subtitled.mp4"
-            )
-        else:
-            final_output_path = base_output_path
+        final_output_path = os.path.join(
+            output_dir, 
+            f"{video_id}_clip_{int(start_time)}_subtitled.mp4"
+        )
 
         try:
             print(f"Starting clip extraction ({duration}s from {int(start_time)}s)")
@@ -176,8 +207,8 @@ class YouTubeHandler:
             print(f"Debug: Output directory: {output_dir}")
             print(f"Debug: Video ID: {video_id}")
             print(f"Debug: Base output path: {base_output_path}")
-            print(f"Debug: Final output path: {final_output_path}")
-
+            # print(f"Debug: Final output path: {final_output_path}")
+            print()
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 downloaded_file = ydl.prepare_filename(info)
@@ -192,40 +223,29 @@ class YouTubeHandler:
                 
                 print(f"\nClip successfully created at: {base_output_path}")
                 
-                # Add subtitles if requested
-                if subtitle_text:
-                    try:
-                        if word_by_word:
-                            # Split text into words and remove empty strings
-                            # words = [w for w in subtitle_text.split() if w]
-                            success = YouTubeHandler.add_word_subtitles_to_clip(
-                                base_output_path,
-                                final_output_path,
-                                words,
-                                duration=duration
-                            )
-                        else:
-                            success = YouTubeHandler.add_subtitles_to_clip(
-                                base_output_path,
-                                final_output_path,
-                                subtitle_text,
-                                duration=duration
-                            )
-                        
-                        # Cleanup and return appropriate path
-                        if success and os.path.exists(final_output_path):
-                            os.remove(base_output_path)
-                            print(f"Subtitles added successfully")
-                            return final_output_path
-                        else:
-                            print(f"Warning: Failed to add subtitles, returning original clip")
-                            return base_output_path
-                            
-                    except Exception as e:
-                        print(f"Warning: Failed to add subtitles: {str(e)}, returning original clip")
+                try:
+                    success = False
+                    success = YouTubeHandler.process_video_with_highlights(
+                        base_output_path,
+                        final_output_path,
+                        words,
+                        duration=duration,
+                        window_size=window_size,
+                        font_size=SubtitleConfig.FONT_SIZE
+                    )
+
+                    # Cleanup and return appropriate path
+                    if success and os.path.exists(final_output_path):
+                        os.remove(base_output_path)
+                        print(f"Subtitles added successfully")
+                        return final_output_path
+                    else:
+                        print(f"Warning: Failed to add subtitles, returning original clip")
                         return base_output_path
-                
-                return base_output_path
+                        
+                except Exception as e:
+                    print(f"Warning: Failed to add subtitles: {str(e)}, returning original clip")
+                    return base_output_path
 
         except Exception as e:
             print(f"\nError during clip extraction: {str(e)}")

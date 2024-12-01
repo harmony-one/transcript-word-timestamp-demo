@@ -1,20 +1,17 @@
-# main.py
-import argparse
 import os
 import sys
 from typing import Optional
-import assemblyai as aai
 from config import config as app_config
-from handlers import YouTubeHandler, TranscriptionHandler
+from handlers import YouTubeHandler, TranscriptionHandler, SubtitleConfig
 from searchers import FuzzySearcher
 from utils import format_time, get_segment_texts, parse_arguments
 
 def process_video(url: str, search_phrase: str = None, 
-                 start_text: str = None, end_text: str = None,
-                 similarity_threshold: int = app_config.DEFAULT_SIMILARITY_THRESHOLD,
-                 clip_duration: Optional[int] = app_config.DEFAULT_CLIP_DURATION,
-                 cleanup: bool = True,
-                 subtitle_mode: str = app_config.DEFAULT_SUBTITLE_MODE) -> None:
+                start_text: str = None, end_text: str = None,
+                similarity_threshold: int = app_config.DEFAULT_SIMILARITY_THRESHOLD,
+                clip_duration: Optional[int] = app_config.DEFAULT_CLIP_DURATION,
+                cleanup: bool = True,
+                window_size: int = SubtitleConfig.DEFAULT_WINDOW_SIZE) -> None:
     
     youtube_handler = YouTubeHandler()
     searcher = FuzzySearcher()
@@ -87,6 +84,7 @@ def process_video(url: str, search_phrase: str = None,
             print(f"Duration: {int(duration)}s\n")
             print(f"YouTube URL: https://youtube.com/watch?v={video_id}&t={int(start_time)}s")
             occurrences = [(start_time, end_time, text, similarity)]
+            clip_duration = duration
 
         # Clip generation phase
         if clip_duration is not None:
@@ -112,7 +110,6 @@ def process_video(url: str, search_phrase: str = None,
             if choice != 'n':
                 # Get words for the segment
                 segment_words = []
-                clip_duration = min(clip_duration, end_time - start_time) if end_time else clip_duration
                 clip_end_ms = (start_time + clip_duration) * 1000
                 clip_start_ms = start_time * 1000
                 
@@ -124,16 +121,17 @@ def process_video(url: str, search_phrase: str = None,
                             'end': min(word.end, clip_end_ms)
                         })
                 
-                subtitle_text = text if subtitle_mode != 'none' else None
-                clip_path = YouTubeHandler.extract_clip(
-                    url=url,
-                    start_time=start_time,
-                    duration=clip_duration,
-                    subtitle_text=subtitle_text,
-                    word_by_word=subtitle_mode == app_config.DEFAULT_SUBTITLE_MODE,
-                    words=segment_words
-                )
-                print(f"Clip saved to: {clip_path}")
+                # subtitle_text = text if subtitle_mode != 'none' else None
+                if (text):
+
+                    clip_path = YouTubeHandler.extract_clip(
+                        url=url,
+                        start_time=start_time,
+                        duration=clip_duration,
+                        words=segment_words,
+                        window_size=window_size
+                    )
+                    print(f"Clip saved to: {clip_path}")
 
         # Cleanup
         if cleanup:
@@ -149,8 +147,7 @@ def process_video(url: str, search_phrase: str = None,
 
 def main():
     args = parse_arguments()
-    
-    try:        
+    try:
         if args.phrase:
             process_video(
                 url=args.url,
@@ -158,7 +155,7 @@ def main():
                 similarity_threshold=args.threshold,
                 clip_duration=args.clip_duration if args.clip_duration > 0 else None,
                 cleanup=not args.no_cleanup,
-                subtitle_mode=args.subtitles
+                window_size=args.words
             )
         else:  # args.text
             start_text, end_text = get_segment_texts(args.text)
@@ -171,9 +168,9 @@ def main():
                 start_text=start_text,
                 end_text=end_text,
                 similarity_threshold=args.threshold,
-                clip_duration=args.clip_duration if args.clip_duration > 0 else None,
+                clip_duration=None, # args.clip_duration if args.clip_duration > 0 else None,
                 cleanup=not args.no_cleanup,
-                subtitle_mode=args.subtitles
+                window_size=args.words
             )
             
     except KeyboardInterrupt:
