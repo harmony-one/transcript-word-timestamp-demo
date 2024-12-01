@@ -59,7 +59,7 @@ python cli.py <youtube_url> (-p PHRASE | -t TEXT) [options]
 | --threshold | Minimum similarity threshold (0-100) | No | 80 |
 | --clip-duration | Duration of extracted clips in seconds (0 to disable) | No | 30 |
 | --no-cleanup | Keep temporary files after processing | No | False |
-| --subtitles | Subtitle mode: word-by-word, full text, or none | No | word |
+| -w, --words | Words per subtitle frame (window size) | No | 1 |
 
 * Either --phrase or --text must be specified, but not both
 
@@ -75,9 +75,9 @@ Search for a longer text segment:
 python transcript.py "https://youtube.com/watch?v=example" -t "this is a longer text that will be split into start and end segments" --threshold 90
 ```
 
-Search without generating subtitles:
+Search with five-word subtitle
 ```bash
-python transcript.py "https://youtube.com/watch?v=example" -p "test phrase" --subtitles none
+python transcript.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30 --words 5
 ```
 
 ## Output
