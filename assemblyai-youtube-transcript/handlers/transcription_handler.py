@@ -18,7 +18,7 @@ class TranscriptionHandler:
 
     def transcribe(self, audio_path: str) -> aai.Transcript:
         """Transcribe audio file using AssemblyAI."""
-        return self.transcriber.transcribe(audio_path) # aai.Transcript.get_by_id('b329f1b0-5188-4033-b827-6b0b0cc23152')
+        return aai.Transcript.get_by_id('b329f1b0-5188-4033-b827-6b0b0cc23152') # self.transcriber.transcribe(audio_path) # aai.Transcript.get_by_id('b329f1b0-5188-4033-b827-6b0b0cc23152')
 
     def find_text_segment(self,
                          transcript: aai.Transcript,
