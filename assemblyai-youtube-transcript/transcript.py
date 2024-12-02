@@ -1,10 +1,13 @@
 import os
 import sys
+import traceback
 from typing import Optional
 from config import config as app_config
 from handlers import YouTubeHandler, TranscriptionHandler, SubtitleConfig
 from searchers import FuzzySearcher
-from utils import format_time, get_segment_texts, parse_arguments
+from utils import format_time, get_segment_texts, parse_arguments, setup_logger
+
+logger = setup_logger('main')
 
 def process_video(url: str, search_phrase: str = None, 
                 start_text: str = None, end_text: str = None,
@@ -18,21 +21,28 @@ def process_video(url: str, search_phrase: str = None,
     transcriber = TranscriptionHandler(searcher) 
 
     try:
+        logger.info("Starting video processing")
+        logger.debug(f"Parameters: similarity_threshold={similarity_threshold}, clip_duration={clip_duration}")
+
         if search_phrase and (start_text or end_text):
+            logger.error("Cannot specify both search_phrase and start/end text")
             raise ValueError("Cannot specify both search_phrase and start/end text")
             
         if bool(start_text) != bool(end_text):
+            logger.error("Must specify both start_text and end_text or neither")
             raise ValueError("Must specify both start_text and end_text or neither")
 
         video_id = youtube_handler.get_video_id(url)
         if not video_id:
+            logger.error("Invalid YouTube URL provided")
             raise ValueError("Invalid YouTube URL")
         
-        print("\nDownloading audio...")
+        logger.info("Downloading audio...")
         audio_path = youtube_handler.download_audio(url)
         
-        print(f"Transcribing audio... {audio_path}")
+        logger.info(f"Transcribing audio from: {audio_path}")
         transcript = transcriber.transcribe(audio_path)
+        logger.debug("Transcription complete")
 
         # Search phase
         occurrences = []
@@ -40,29 +50,35 @@ def process_video(url: str, search_phrase: str = None,
             words = search_phrase.split()
             if len(words) > 5:
                 truncated_phrase = ' '.join(words[:5])
-                print(f"\nWarning: Search phrase truncated to: '{truncated_phrase}'")
+                logger.warning(f"Search phrase truncated from '{search_phrase}' to '{truncated_phrase}'")
                 search_phrase = truncated_phrase
 
+            logger.info(f"Searching for phrase: '{search_phrase}'")
             occurrences = transcriber.find_phrase_occurrences(
                 transcript=transcript,
                 search_phrase=search_phrase,
                 similarity_threshold=similarity_threshold
             )
             if not occurrences:
-                print(f"\nNo similar phrases found for '{search_phrase}'")
+                logger.warning(f"No similar phrases found for '{search_phrase}'")
                 return
 
             # Display all occurrences with index numbers
-            print(f"\nFound {len(occurrences)} matches, sorted by match score (highest first):")
+            logger.info(f"Found {len(occurrences)} matches")
             for idx, (start_time, end_time, text, similarity) in enumerate(occurrences, 1):
                 formatted_time = format_time(start_time)
-                print(f"\nMatch #{idx}:")
-                print(f"Time: {formatted_time}")
-                print(f"Match score: {similarity:.1f}%")
-                print(f"Text: \"{text}\"")
-                print(f"https://youtube.com/watch?v={video_id}&t={int(start_time)}s")
+                logger.info(f"\nMatch #{idx}:")
+                logger.info(f"Time: {formatted_time}")
+                logger.info(f"Match score: {similarity:.1f}%")
+                logger.info(f"Text: \"{text}\"")
+                logger.info(f"URL: https://youtube.com/watch?v={video_id}&t={int(start_time)}s")
+
 
         else: # Text segment search
+            logger.info("Searching for text segment")
+            logger.debug(f"Start text: '{start_text}'")
+            logger.debug(f"End text: '{end_text}'")
+        
             segment = transcriber.find_text_segment(
                 transcript=transcript,
                 start_text=start_text,
@@ -70,19 +86,19 @@ def process_video(url: str, search_phrase: str = None,
                 similarity_threshold=similarity_threshold
             )
             if not segment:
-                print(f"\nNo matching segment found")
+                logger.warning("No matching segment found")
                 return
 
             start_time, end_time, text, similarity = segment
             duration = end_time - start_time
-            print(f"\nFound matching segment:")
-            print(f"Start text: \"{start_text}\"")
-            print(f"Start time: {format_time(start_time)}")
-            print(f"End text: \"{end_text}\"")
-            print(f"End time: {format_time(end_time)}")
-            print(f"Full text: {text}")
-            print(f"Duration: {int(duration)}s\n")
-            print(f"YouTube URL: https://youtube.com/watch?v={video_id}&t={int(start_time)}s")
+            logger.info("Found matching segment:")
+            logger.info(f"Start text: \"{start_text}\"")
+            logger.info(f"Start time: {format_time(start_time)}")
+            logger.info(f"End text: \"{end_text}\"")
+            logger.info(f"End time: {format_time(end_time)}")
+            logger.info(f"Full text: {text}")
+            logger.info(f"Duration: {int(duration)}s")
+            logger.info(f"URL: https://youtube.com/watch?v={video_id}&t={int(start_time)}s")
             occurrences = [(start_time, end_time, text, similarity)]
             clip_duration = duration
 
@@ -101,14 +117,14 @@ def process_video(url: str, search_phrase: str = None,
                             start_time, end_time, text, _ = occurrences[idx-1]
                             break
                     except ValueError:
-                        print("Please enter a valid number or 'n'")
+                        logger.warning("Invalid input provided")
             else:
                 choice = input("\nGenerate clip? (Y/n): ").strip().lower()
                 if choice in ['y', 'yes', '']:
                     start_time, end_time, text, _ = occurrences[0]
 
             if choice != 'n':
-                # Get words for the segment
+                logger.info("Preparing clip generation")
                 segment_words = []
                 clip_end_ms = (start_time + clip_duration) * 1000
                 clip_start_ms = start_time * 1000
@@ -121,7 +137,7 @@ def process_video(url: str, search_phrase: str = None,
                             'end': min(word.end, clip_end_ms)
                         })
                 
-                # subtitle_text = text if subtitle_mode != 'none' else None
+                logger.debug(f"Processing {len(segment_words)} words for the clip")
                 if (text):
 
                     clip_path = YouTubeHandler.extract_clip(
@@ -131,23 +147,25 @@ def process_video(url: str, search_phrase: str = None,
                         words=segment_words,
                         window_size=window_size
                     )
-                    print(f"Clip saved to: {clip_path}")
+                    logger.info(f"Clip saved to: {clip_path}")
 
         # Cleanup
         if cleanup:
             try:
                 os.remove(audio_path)
-                print("\nCleaned up temporary files")
+                logger.debug("Cleaned up temporary audio file")
             except:
                 pass
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        logger.error(f"Process failed: {str(e)}")
+        logger.debug(traceback.format_exc())
         sys.exit(1)
 
 def main():
     args = parse_arguments()
     try:
+        logger.info("Starting transcript processing")
         if args.phrase:
             process_video(
                 url=args.url,
@@ -174,10 +192,11 @@ def main():
             )
             
     except KeyboardInterrupt:
-        print("\nOperation cancelled by user")
+        logger.warning("Operation cancelled by user")
         sys.exit(1)
     except Exception as e:
-        print(f"Critical error: {str(e)}")
+        logger.error(f"Critical error: {str(e)}")
+        logger.debug(traceback.format_exc())
         sys.exit(1)
 
 if __name__ == "__main__":

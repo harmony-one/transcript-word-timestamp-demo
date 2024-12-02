@@ -9,6 +9,7 @@ assemblyai = "*"
 load-dotenv = "*"
 rapidfuzz = "*"
 moviepy = "*"
+colorama = "*"
 
 [dev-packages]
 

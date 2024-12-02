@@ -2,4 +2,5 @@ assemblyai>=0.35.1
 load-dotenv>=0.1.0
 rapidfuzz>=3.10.1
 yt-dlp>=2024.11.18
-moviepy>=2.1.1
+moviepy>=2.1.
+colorama>=0.4.6
