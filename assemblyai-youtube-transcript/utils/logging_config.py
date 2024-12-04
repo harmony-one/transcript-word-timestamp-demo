@@ -14,14 +14,14 @@ class ASCIIFormatter(logging.Formatter):
         super().__init__(fmt, datefmt)
         # Regex patterns
         self.ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        self.youtube_dl = re.compile(r'\[(youtube|download|info)\] ')  # CHANGE: Added pattern for youtube-dl
+        self.youtube_dl = re.compile(r'\[(youtube|download|info)\] ')
         
     def format(self, record):
         # First format the record
         formatted = super().format(record)
         # Strip ANSI escape codes and youtube-dl brackets
         cleaned = self.ansi_escape.sub('', formatted)
-        cleaned = self.youtube_dl.sub('', cleaned)  # CHANGE: Remove youtube-dl brackets
+        cleaned = self.youtube_dl.sub('', cleaned)
         return cleaned
     
 class ColoredFormatter(logging.Formatter):
