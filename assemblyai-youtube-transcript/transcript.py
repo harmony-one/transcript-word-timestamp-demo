@@ -5,12 +5,13 @@ from typing import Optional
 from config import config as app_config
 from handlers import YouTubeHandler, TranscriptionHandler, SubtitleConfig
 from searchers import FuzzySearcher
-from utils import format_time, get_segment_texts, parse_arguments, setup_logger
+from utils import format_time, get_segment_texts, parse_arguments, setup_logger, parse_srt_file
 
 logger = setup_logger('main')
 
 def process_video(url: str, search_phrase: str = None, 
                 start_text: str = None, end_text: str = None,
+                srt_file: str = None,
                 similarity_threshold: int = app_config.DEFAULT_SIMILARITY_THRESHOLD,
                 clip_duration: Optional[int] = app_config.DEFAULT_CLIP_DURATION,
                 cleanup: bool = True,
@@ -22,6 +23,40 @@ def process_video(url: str, search_phrase: str = None,
 
     try:
         logger.info("Starting video processing")
+
+        if srt_file:
+            logger.info(f"Using provided SRT file: {srt_file}")
+            # Add debug logging for SRT file handling
+            if not os.path.exists(srt_file):
+                logger.error(f"SRT file not found at path: {srt_file}")
+                raise FileNotFoundError(f"SRT file not found: {srt_file}")
+
+            words = parse_srt_file(srt_file)
+            logger.debug(f"Parsed {len(words)} words from SRT file")
+            
+            if not words:
+                logger.error("No valid subtitles found in SRT file")
+                return
+                
+            # Use the first word's timestamp as start time
+            start_time = words[0]['start'] / 1000.0  # Convert to seconds
+            logger.debug(f"Using start time: {start_time} seconds")
+
+            # If no clip duration specified, use the time between first and last word
+            
+            clip_duration = (words[-1]['end'] - words[0]['start']) / 1000.0
+            logger.info(f"Calculated clip duration: {clip_duration} seconds")
+            
+            clip_path = YouTubeHandler.extract_clip(
+                url=url,
+                start_time=start_time,
+                duration=clip_duration,
+                words=words,
+                window_size=window_size
+            )
+            logger.info(f"Clip saved to: {clip_path}")
+            return
+        
         logger.debug(f"Parameters: similarity_threshold={similarity_threshold}, clip_duration={clip_duration}")
 
         if search_phrase and (start_text or end_text):
@@ -43,6 +78,7 @@ def process_video(url: str, search_phrase: str = None,
         logger.info(f"Transcribing audio from: {audio_path}")
         transcript = transcriber.transcribe(audio_path)
         logger.debug("Transcription complete")
+
 
         # Search phase
         occurrences = []
@@ -122,7 +158,9 @@ def process_video(url: str, search_phrase: str = None,
                 choice = input("\nGenerate clip? (Y/n): ").strip().lower()
                 if choice in ['y', 'yes', '']:
                     start_time, end_time, text, _ = occurrences[0]
-
+            # ::::::::::::::::::::::::::::::
+            # start_time, end_time, text, _ = occurrences[0]
+            # choice = 'y'
             if choice != 'n':
                 logger.info("Preparing clip generation")
                 segment_words = []
@@ -166,7 +204,15 @@ def main():
     args = parse_arguments()
     try:
         logger.info("Starting transcript processing")
-        if args.phrase:
+        if args.srt:
+            process_video(
+                url=args.url,
+                srt_file=args.srt,
+                clip_duration=args.clip_duration if args.clip_duration > 0 else None,
+                cleanup=not args.no_cleanup,
+                window_size=args.words
+            )
+        elif args.phrase:
             process_video(
                 url=args.url,
                 search_phrase=args.phrase,

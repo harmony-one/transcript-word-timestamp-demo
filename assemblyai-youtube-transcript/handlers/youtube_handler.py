@@ -12,7 +12,6 @@ from typing import List
 from yt_dlp.utils import download_range_func
 from config import config as app_config
 from enum import Enum
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip
 from utils import setup_logger, millisec_to_srt_time, get_ass_style
 
 logger = setup_logger('youtube_handler')
@@ -124,7 +123,6 @@ class YouTubeHandler:
                 # Write ASS header with style configuration
                 f.write(get_ass_style(font_size=font_size, margin_v=250))  # Increased margin to move text higher
                 
-                # Process words in windows
                 clip_start_ms = words[0]['start']
                 
                 for i in range(0, len(words), window_size):
@@ -144,10 +142,8 @@ class YouTubeHandler:
                         text_parts = []
                         for idx, w in enumerate(window_words):
                             if idx == word_idx:
-                                # CHANGE: Consistent border thickness for highlighted word
                                 text_parts.append(f"{{\\1c&HC7C700&\\3c&H000000&\\bord4}}{w['text']}{{\\1c&HFFFFFF&\\3c&H000000&\\bord4}}")
                             else:
-                                # CHANGE: Added explicit border thickness for non-highlighted words
                                 text_parts.append(f"{{\\3c&H000000&\\bord4}}{w['text']}")
                         
                         formatted_text = ' '.join(text_parts)
@@ -214,13 +210,6 @@ class YouTubeHandler:
                         f.write(f"{i}\n{start_time_str} --> {end_time_str}\n{word['text']}\n\n")
                 logger.debug(f"SRT reference file generated: {srt_output_path}")
 
-            # def progress_hook(d):
-            #     if d['status'] == 'downloading':
-            #         if '_percent_str' in d:
-            #             logger.info(f"Download progress: {d['_percent_str']}")
-            #     elif d['status'] == 'finished':
-            #         logger.info("Download complete, starting processing...")
-
             def progress_hook(d):
                 if d['status'] == 'downloading':
                     try:
@@ -281,9 +270,9 @@ class YouTubeHandler:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 logger.info("Starting video download")
                 # ::::::::::::::::::::::::::::;
-                # info = ydl.extract_info(url, download=True)
-                # downloaded_file = ydl.prepare_filename(info)
-                downloaded_file = 'clips/7qZl_5xHoBw_clip_435.mp4' # ydl.prepare_filename(info)
+                info = ydl.extract_info(url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+                # downloaded_file = 'clips/7qZl_5xHoBw_clip_435.mp4' # ydl.prepare_filename(info)
                 logger.debug(f"Video downloaded to: {downloaded_file}")
                 
                 if not os.path.exists(downloaded_file):
@@ -310,7 +299,7 @@ class YouTubeHandler:
                         logger.info("Dynamic subtitles added successfully")
                         logger.debug("Cleaning up intermediate video file")
                         # :::::::::::::::::::::::::::::::::
-                        # os.remove(base_output_path)
+                        os.remove(base_output_path)
                         return final_output_path
                     else:
                         logger.warning("Failed to add subtitles, returning original clip")
