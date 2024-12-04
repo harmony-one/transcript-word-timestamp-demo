@@ -47,51 +47,58 @@ ASSEMBLYAI_AUTH_KEY=your-api-key-here
 
 ### Basic Command
 ```bash
-python cli.py <youtube_url> (-p PHRASE | -t TEXT) [options]
+python cli.py <youtube_url> (-p PHRASE | -t TEXT | -s SRT_FILE) [options]
 ```
 
 ### Parameters
 | Parameter | Description | Required | Default |
 |-----------|-------------|----------|---------|
 | youtube_url | Full URL of the YouTube video | Yes | - |
-| -p, --phrase | Short phrase to search for (max 5 words) | No* | -
-| -t, --textFull | text to search for (split into segments) | No* | -
+| -p, --phrase | Short phrase to search for (max 5 words) | No* | - |
+| -t, --text | Full text to search for (split into segments) | No* | - |
+| -s, --srt | Path to SRT file for subtitle timestamps | No* | - |
 | --threshold | Minimum similarity threshold (0-100) | No | 80 |
 | --clip-duration | Duration of extracted clips in seconds (0 to disable) | No | 30 |
 | --no-cleanup | Keep temporary files after processing | No | False |
 | -w, --words | Words per subtitle frame (window size) | No | 1 |
 
-* Either --phrase or --text must be specified, but not both
+\* One of --phrase, --text, or --srt must be specified, but they are mutually exclusive
 
 ### Examples
 
 Search for a specific phrase:
 ```bash
-python transcript.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30
+python cli.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30
 ```
 
 Search for a longer text segment:
 ```bash
-python transcript.py "https://youtube.com/watch?v=example" -t "this is a longer text that will be split into start and end segments" --threshold 90
+python cli.py "https://youtube.com/watch?v=example" -t "this is a longer text that will be split into start and end segments" --threshold 90
 ```
 
-Search with five-word subtitle
+Search with five-word subtitle window:
 ```bash
-python transcript.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30 --words 5
+python cli.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30 --words 5
+```
+
+Use a predefined SRT file:
+```bash
+python cli.py "https://youtube.com/watch?v=example" -s subtitles.srt --words 5
 ```
 
 ## Output
 The tool will:
-1. Download and transcribe the video audio
-2. Search for matches using fuzzy string matching
+1. Download and transcribe the video audio (or use provided SRT file)
+2. Search for matches using fuzzy string matching (when using -p or -t)
 3. Display matches with:
    - Timestamp
-   - Match score
+   - Match score (for phrase/text search)
    - Matched text
    - Direct YouTube URL with timestamp
-4. Optionally create video clips with word-by-word subtitles
+4. Create video clips with word-by-word subtitles
 
 ## Notes
 - Search phrases are limited to 5 words for optimal matching
 - Long text inputs are automatically split into start and end segments
 - Temporary files are automatically cleaned up unless --no-cleanup is specified
+- When using an SRT file (-s), phrase searching is disabled and the timestamps from the file are used directly
