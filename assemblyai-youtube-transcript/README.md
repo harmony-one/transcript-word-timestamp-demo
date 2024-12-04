@@ -47,7 +47,7 @@ ASSEMBLYAI_AUTH_KEY=your-api-key-here
 
 ### Basic Command
 ```bash
-python cli.py <youtube_url> (-p PHRASE | -t TEXT | -s SRT_FILE) [options]
+python transcript.py <youtube_url> (-p PHRASE | -t TEXT | -s SRT_FILE) [options]
 ```
 
 ### Parameters
