@@ -1,11 +1,29 @@
 import logging
 import os
 from datetime import datetime
+import re
 from colorama import init, Fore, Style
 
 # Initialize colorama
 init(autoreset=True)
 
+
+class ASCIIFormatter(logging.Formatter):
+    """Formatter that strips ANSI escape codes and youtube-dl style brackets"""
+    def __init__(self, fmt=None, datefmt=None):
+        super().__init__(fmt, datefmt)
+        # Regex patterns
+        self.ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        self.youtube_dl = re.compile(r'\[(youtube|download|info)\] ')  # CHANGE: Added pattern for youtube-dl
+        
+    def format(self, record):
+        # First format the record
+        formatted = super().format(record)
+        # Strip ANSI escape codes and youtube-dl brackets
+        cleaned = self.ansi_escape.sub('', formatted)
+        cleaned = self.youtube_dl.sub('', cleaned)  # CHANGE: Remove youtube-dl brackets
+        return cleaned
+    
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with colors for console output"""
     
@@ -24,6 +42,14 @@ class ColoredFormatter(logging.Formatter):
             record.msg = f"{self.COLORS[levelname]}{record.msg}{Style.RESET_ALL}"
         return super().format(record)
 
+class YouTubeDLFilter(logging.Filter):
+    """Filter to clean up youtube-dl logging output"""
+    def filter(self, record):
+        # Skip youtube-dl debug messages
+        if 'youtube' in record.msg or '[download]' in record.msg or '[info]' in record.msg:
+            return False
+        return True
+    
 def setup_logger(name=None):
     """
     Configure and return a logger instance with console and file output
@@ -46,20 +72,28 @@ def setup_logger(name=None):
         console_formatter = ColoredFormatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-        file_formatter = logging.Formatter(
+        # file_formatter = logging.Formatter(
+        #     '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        # )
+        file_formatter = ASCIIFormatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-        
+
         # Console handler (with colors)
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(console_formatter)
-        console_handler.setLevel(logging.INFO)  # Console shows INFO and above
+        console_handler.setLevel(logging.DEBUG)  # Console shows INFO and above
         
         # File handler (without colors, but with all debug info)
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setFormatter(file_formatter)
         file_handler.setLevel(logging.DEBUG)  # File gets everything
         
+        # Add youtube-dl filter to both handlers
+        youtube_dl_filter = YouTubeDLFilter()
+        console_handler.addFilter(youtube_dl_filter)
+        file_handler.addFilter(youtube_dl_filter)
+
         # Add both handlers
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)

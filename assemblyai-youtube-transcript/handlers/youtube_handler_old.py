@@ -457,8 +457,8 @@ class YouTubeHandler:
         duration: int = 30, 
         output_dir: str = app_config.DEFAULT_OUTPUT_DIR,
         subtitle_text: Optional[str] = None, 
-        subtitle_mode: SubtitleMode = SubtitleMode.WORD,  # CHANGED: replaced word_by_word with subtitle_mode
-        window_size: int = 5,  # CHANGED: added window_size parameter
+        subtitle_mode: SubtitleMode = SubtitleMode.WORD,
+        window_size: int = 5, 
         words: List[dict] = []
     ) -> str:
         """

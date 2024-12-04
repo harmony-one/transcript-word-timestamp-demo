@@ -3,6 +3,8 @@ import sys
 import traceback
 import yt_dlp
 import os
+import subprocess
+import os
 
 from io import StringIO
 from urllib.parse import parse_qs, urlparse
@@ -10,8 +12,7 @@ from typing import List
 from yt_dlp.utils import download_range_func
 from config import config as app_config
 from enum import Enum
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip
-from utils import setup_logger, millisec_to_srt_time
+from utils import setup_logger, millisec_to_srt_time, get_ass_style
 
 logger = setup_logger('youtube_handler')
 
@@ -47,7 +48,7 @@ class SubtitleConfig:
     ACTIVE_COLOR = 'purple'     # Color for the currently spoken word
     INACTIVE_COLOR = 'gray'     # Color for other visible words
     DEFAULT_WINDOW_SIZE = 5     # Number of words visible at once
-    FONT_SIZE = 48             # Base font size
+    FONT_SIZE = 72             # Base font size
     FONT_PATH = os.path.join('assets', 'Anton', 'Anton-Regular.ttf')
     DEFAULT_SIMILARITY_THRESHOLD = 80
     
@@ -110,77 +111,61 @@ class YouTubeHandler:
         except Exception as e:
             raise Exception(f"Failed to download audio: {str(e)}")
 
+    @staticmethod
     def process_video_with_highlights(input_file: str, output_file: str, 
                             words: List[dict], duration: float,
                             window_size: int = SubtitleConfig.DEFAULT_WINDOW_SIZE,
                             font_size: int = SubtitleConfig.FONT_SIZE) -> bool:
         try:
-            with capture_moviepy_output():
+            subtitle_path = output_file + '.ass'
             
-                video = VideoFileClip(input_file)
-                clips = []
+            with open(subtitle_path, 'w', encoding='utf-8') as f:
+                # Write ASS header with style configuration
+                f.write(get_ass_style(font_size=font_size, margin_v=250))  # Increased margin to move text higher
+                
                 clip_start_ms = words[0]['start']
-                char_width = font_size * 0.45  # Reduced for tighter character spacing
-                word_spacing = font_size * 0.36  # Reduced for closer word spacing
-
+                
                 for i in range(0, len(words), window_size):
                     window_words = words[i:i + window_size]
                     if not window_words:
                         continue
-
-                    window_start = (window_words[0]['start'] - clip_start_ms) / 1000
-                    window_end = (window_words[-1]['end'] - clip_start_ms) / 1000
-
-                    # Calculate total width with adjusted spacing
-                    total_width = sum(len(w['text']) for w in window_words) * char_width + \
-                                (len(window_words) - 1) * word_spacing
-                    start_x = (video.w - total_width) / 2
-                    current_x = start_x
-
+                    
+                    # For each word in the window
                     for word_idx, word in enumerate(window_words):
-                        word_start = (word['start'] - clip_start_ms) / 1000
-                        word_end = (word['end'] - clip_start_ms) / 1000
-                        word_width = len(word['text']) * char_width
-
-                        # Background word
-                        text_clip = (TextClip(
-                            text=word['text'].upper(),
-                            size=(int(word_width * 1.1), None),  # Slightly wider than text
-                            font_size=font_size,
-                            color='white',
-                            stroke_color='black',
-                            stroke_width=2,
-                            font=SubtitleConfig.FONT_PATH,
-                            method='label'
-                        )
-                        .with_duration(window_end - window_start)
-                        .with_start(window_start)
-                        .with_position((int(current_x), video.h - font_size * 2)))
-                        clips.append(text_clip)
-
-                        # Highlighted version
-                        highlight = (TextClip(
-                            text=word['text'].upper(),
-                            size=(int(word_width * 1.1), None),
-                            font_size=font_size,
-                            color='yellow',
-                            stroke_color='black',
-                            stroke_width=2,
-                            font=SubtitleConfig.FONT_PATH,
-                            method='label'
-                        )
-                        .with_duration(word_end - word_start)
-                        .with_start(word_start)
-                        .with_position((int(current_x), video.h - font_size * 2)))
-                        clips.append(highlight)
-
-                        current_x += word_width + word_spacing
-
-                final_video = CompositeVideoClip([video] + clips)
-                final_video.write_videofile(output_file, codec='libx264', audio_codec='aac')
-                video.close()
-                final_video.close()
-                return True
+                        start_time = (word['start'] - clip_start_ms) / 1000.0
+                        end_time = (window_words[-1]['end'] - clip_start_ms) / 1000.0
+                        
+                        start_str = f"{int(start_time//3600)}:{int((start_time%3600)//60):02d}:{start_time%60:05.2f}"
+                        end_str = f"{int(end_time//3600)}:{int((end_time%3600)//60):02d}:{end_time%60:05.2f}"
+                        
+                        # Build text with highlighted word using the specific cyan color
+                        text_parts = []
+                        for idx, w in enumerate(window_words):
+                            if idx == word_idx:
+                                text_parts.append(f"{{\\1c&HC7C700&\\3c&H000000&\\bord4}}{w['text']}{{\\1c&HFFFFFF&\\3c&H000000&\\bord4}}")
+                            else:
+                                text_parts.append(f"{{\\3c&H000000&\\bord4}}{w['text']}")
+                        
+                        formatted_text = ' '.join(text_parts)
+                        
+                        f.write(f"Dialogue: {word_idx},{start_str},{end_str},Default,,0,0,0,,{formatted_text}\n")
+            
+            
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', input_file,
+                '-vf', f'crop=ih:ih:(iw-ih)/2:0,ass={subtitle_path}',  # Crop to square from center
+                '-c:a', 'copy',
+                output_file
+            ]
+            
+            subprocess.run(cmd, check=True)
+            
+            # Clean up
+            if os.path.exists(subtitle_path):
+                os.remove(subtitle_path)
+            
+            return True
 
         except Exception as e:
             print(f"Error processing video: {str(e)}")
@@ -224,13 +209,6 @@ class YouTubeHandler:
                         end_time_str = millisec_to_srt_time(word['end'])
                         f.write(f"{i}\n{start_time_str} --> {end_time_str}\n{word['text']}\n\n")
                 logger.debug(f"SRT reference file generated: {srt_output_path}")
-
-            # def progress_hook(d):
-            #     if d['status'] == 'downloading':
-            #         if '_percent_str' in d:
-            #             logger.info(f"Download progress: {d['_percent_str']}")
-            #     elif d['status'] == 'finished':
-            #         logger.info("Download complete, starting processing...")
 
             def progress_hook(d):
                 if d['status'] == 'downloading':
@@ -291,8 +269,10 @@ class YouTubeHandler:
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 logger.info("Starting video download")
+                # ::::::::::::::::::::::::::::;
                 info = ydl.extract_info(url, download=True)
                 downloaded_file = ydl.prepare_filename(info)
+                # downloaded_file = 'clips/7qZl_5xHoBw_clip_435.mp4' # ydl.prepare_filename(info)
                 logger.debug(f"Video downloaded to: {downloaded_file}")
                 
                 if not os.path.exists(downloaded_file):
@@ -318,6 +298,7 @@ class YouTubeHandler:
                     if success and os.path.exists(final_output_path):
                         logger.info("Dynamic subtitles added successfully")
                         logger.debug("Cleaning up intermediate video file")
+                        # :::::::::::::::::::::::::::::::::
                         os.remove(base_output_path)
                         return final_output_path
                     else:
