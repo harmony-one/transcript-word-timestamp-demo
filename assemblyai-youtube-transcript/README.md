@@ -68,22 +68,22 @@ python cli.py <youtube_url> (-p PHRASE | -t TEXT | -s SRT_FILE) [options]
 
 Search for a specific phrase:
 ```bash
-python cli.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30
+python transcript.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30
 ```
 
 Search for a longer text segment:
 ```bash
-python cli.py "https://youtube.com/watch?v=example" -t "this is a longer text that will be split into start and end segments" --threshold 90
+python transcript.py "https://youtube.com/watch?v=example" -t "this is a longer text that will be split into start and end segments" --threshold 90
 ```
 
 Search with five-word subtitle window:
 ```bash
-python cli.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30 --words 5
+python transcript.py "https://youtube.com/watch?v=example" -p "interesting phrase" --clip-duration 30 --words 5
 ```
 
 Use a predefined SRT file:
 ```bash
-python cli.py "https://youtube.com/watch?v=example" -s subtitles.srt --words 5
+python transcript.py "https://youtube.com/watch?v=example" -s subtitles.srt --words 5
 ```
 
 ## Output
