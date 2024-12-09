@@ -175,11 +175,12 @@ class YouTubeHandler:
     @staticmethod
     def extract_clip(
         url: str,
+        font_size: int,
         start_time: float,
         duration: int = 30, 
         output_dir: str = app_config.DEFAULT_OUTPUT_DIR,
         window_size: int = 5,
-        words: List[dict] = []
+        words: List[dict] = [],
     ) -> str:
         """
         Extract video clip, optimized for short segments.
@@ -291,7 +292,7 @@ class YouTubeHandler:
                         words,
                         duration=duration,
                         window_size=window_size,
-                        font_size=SubtitleConfig.FONT_SIZE
+                        font_size=font_size
                     )
 
                     # Cleanup and return appropriate path

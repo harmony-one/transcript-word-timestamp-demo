@@ -21,5 +21,7 @@ def parse_arguments():
                         help='Do not delete temporary files')
     parser.add_argument('-w', '--words', type=int, default=1,
                         help='Words per subtitle print')
+    parser.add_argument('-f', '--font-size', type=int, default=72,
+                        help='Font size for the subtitle')
     
     return parser.parse_args()

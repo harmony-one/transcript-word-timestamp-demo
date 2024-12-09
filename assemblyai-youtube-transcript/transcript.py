@@ -15,7 +15,8 @@ def process_video(url: str, search_phrase: str = None,
                 similarity_threshold: int = app_config.DEFAULT_SIMILARITY_THRESHOLD,
                 clip_duration: Optional[int] = app_config.DEFAULT_CLIP_DURATION,
                 cleanup: bool = True,
-                window_size: int = SubtitleConfig.DEFAULT_WINDOW_SIZE) -> None:
+                window_size: int = SubtitleConfig.DEFAULT_WINDOW_SIZE,
+                font_size: int = SubtitleConfig.FONT_SIZE) -> None:
     
     youtube_handler = YouTubeHandler()
     searcher = FuzzySearcher()
@@ -49,6 +50,7 @@ def process_video(url: str, search_phrase: str = None,
             
             clip_path = YouTubeHandler.extract_clip(
                 url=url,
+                font_size=font_size,
                 start_time=start_time,
                 duration=clip_duration,
                 words=words,
@@ -180,6 +182,7 @@ def process_video(url: str, search_phrase: str = None,
 
                     clip_path = YouTubeHandler.extract_clip(
                         url=url,
+                        font_size=font_size,
                         start_time=start_time,
                         duration=clip_duration,
                         words=segment_words,
@@ -210,7 +213,8 @@ def main():
                 srt_file=args.srt,
                 clip_duration=args.clip_duration if args.clip_duration > 0 else None,
                 cleanup=not args.no_cleanup,
-                window_size=args.words
+                window_size=args.words,
+                font_size=args.font_size
             )
         elif args.phrase:
             process_video(
@@ -219,7 +223,8 @@ def main():
                 similarity_threshold=args.threshold,
                 clip_duration=args.clip_duration if args.clip_duration > 0 else None,
                 cleanup=not args.no_cleanup,
-                window_size=args.words
+                window_size=args.words,
+                font_size=args.font_size
             )
         else:  # args.text
             start_text, end_text = get_segment_texts(args.text)
@@ -234,7 +239,8 @@ def main():
                 similarity_threshold=args.threshold,
                 clip_duration=None, # args.clip_duration if args.clip_duration > 0 else None,
                 cleanup=not args.no_cleanup,
-                window_size=args.words
+                window_size=args.words,
+                font_size=args.font_size
             )
             
     except KeyboardInterrupt:

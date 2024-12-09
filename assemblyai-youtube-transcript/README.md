@@ -61,6 +61,7 @@ python transcript.py <youtube_url> (-p PHRASE | -t TEXT | -s SRT_FILE) [options]
 | --clip-duration | Duration of extracted clips in seconds (0 to disable) | No | 30 |
 | --no-cleanup | Keep temporary files after processing | No | False |
 | -w, --words | Words per subtitle frame (window size) | No | 1 |
+| -f, --font-size | Font size for the subtitle text | No | 72 |
 
 \* One of --phrase, --text, or --srt must be specified, but they are mutually exclusive
 
@@ -84,6 +85,11 @@ python transcript.py "https://youtube.com/watch?v=example" -p "interesting phras
 Use a predefined SRT file:
 ```bash
 python transcript.py "https://youtube.com/watch?v=example" -s subtitles.srt --words 5
+```
+
+Customize subtitle font size:
+```bash
+python transcript.py "https://youtube.com/watch?v=example" -p "interesting phrase" --font-size 48
 ```
 
 ## Output
